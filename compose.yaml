@@ -1,6 +1,7 @@
 services:
   email-service:
     image: email-service:latest
+    build: .
     container_name: email-service
     restart: unless-stopped
     env_file:
