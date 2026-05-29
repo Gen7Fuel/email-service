@@ -1,0 +1,15 @@
+{
+  "name": "email-service",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "hono": "^4.12.23",
+    "nodemailer": "^6.9.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/nodemailer": "^6.4.0"
+  }
+}

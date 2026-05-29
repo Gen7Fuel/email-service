@@ -1,0 +1,21 @@
+services:
+  email-service:
+    image: email-service:latest
+    container_name: email-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2525/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - thehub_default
+      - desk
+
+networks:
+  thehub_default:
+    external: true
+  desk:
+    external: true
