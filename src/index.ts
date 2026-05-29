@@ -16,7 +16,7 @@ const app = new Hono()
 
 const requireApiKey: MiddlewareHandler = async (c, next) => {
   const key = c.req.header('X-API-Key')
-  if (!key || key !== process.env.API_KEY)
+  if (!key || key !== process.env.EMAIL_SERVICE_API_KEY)
     return c.json({ ok: false, error: 'unauthorized' }, 401)
   await next()
 }
