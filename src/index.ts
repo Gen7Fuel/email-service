@@ -1,7 +1,13 @@
 import { Hono } from 'hono'
-import { rateLimiter } from 'hono/rate-limiter'
 import nodemailer from 'nodemailer'
 import type { MiddlewareHandler } from 'hono'
+
+interface Attachment {
+  filename: string
+  content: string       // base64-encoded
+  encoding?: string     // defaults to 'base64'
+  contentType?: string  // e.g. 'application/pdf', 'image/png'
+}
 
 interface SendRequest {
   to: string | string[]
@@ -11,6 +17,7 @@ interface SendRequest {
   cc?: string | string[]
   bcc?: string | string[]
   from?: string
+  attachments?: Attachment[]
 }
 
 const transporter = nodemailer.createTransport({
@@ -45,7 +52,20 @@ const requireApiKey: MiddlewareHandler = async (c, next) => {
   await next()
 }
 
-const sendLimiter = rateLimiter({ windowMs: 60_000, limit: 20 })
+const rateBuckets = new Map<string, number[]>()
+const RATE_WINDOW_MS = 60_000
+const RATE_LIMIT = 20
+
+const sendLimiter: MiddlewareHandler = async (c, next) => {
+  const key = c.req.header('X-API-Key') ?? c.req.header('x-forwarded-for') ?? 'default'
+  const now = Date.now()
+  const timestamps = (rateBuckets.get(key) ?? []).filter(t => now - t < RATE_WINDOW_MS)
+  if (timestamps.length >= RATE_LIMIT)
+    return c.json({ ok: false, error: 'rate limit exceeded' }, 429)
+  timestamps.push(now)
+  rateBuckets.set(key, timestamps)
+  await next()
+}
 
 app.get('/health', (c) =>
   c.json({ ok: true, service: 'email-service', ts: new Date().toISOString() })
@@ -59,7 +79,7 @@ app.post('/send', sendLimiter, requireApiKey, async (c) => {
     return c.json({ ok: false, error: 'invalid JSON body' }, 400)
   }
 
-  const { to, subject, html, text, cc, bcc, from } = body
+  const { to, subject, html, text, cc, bcc, from, attachments } = body
 
   if (!to || !subject || (!html && !text))
     return c.json({ ok: false, error: 'missing required fields: to, subject, and html or text' }, 400)
@@ -73,6 +93,11 @@ app.post('/send', sendLimiter, requireApiKey, async (c) => {
       subject,
       html,
       text,
+      attachments: attachments?.map(a => ({
+        filename: a.filename,
+        content: Buffer.from(a.content, (a.encoding ?? 'base64') as BufferEncoding),
+        contentType: a.contentType,
+      })),
     })
     return c.json({ ok: true, messageId: info.messageId })
   } catch (err: any) {
