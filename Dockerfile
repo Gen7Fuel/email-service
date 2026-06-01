@@ -6,7 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
 COPY . .
+
+USER appuser
 
 EXPOSE 2525
 

@@ -1,6 +1,17 @@
 import { Hono } from 'hono'
+import { rateLimiter } from 'hono/rate-limiter'
 import nodemailer from 'nodemailer'
 import type { MiddlewareHandler } from 'hono'
+
+interface SendRequest {
+  to: string | string[]
+  subject: string
+  html?: string
+  text?: string
+  cc?: string | string[]
+  bcc?: string | string[]
+  from?: string
+}
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -12,7 +23,20 @@ const transporter = nodemailer.createTransport({
   },
 })
 
+transporter.verify().then(() => {
+  console.log('[email-service] SMTP connection verified')
+}).catch((err: Error) => {
+  console.error('[email-service] SMTP verification failed:', err.message)
+  process.exit(1)
+})
+
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  const start = Date.now()
+  await next()
+  console.log(`[email-service] ${c.req.method} ${c.req.path} ${c.res.status} ${Date.now() - start}ms`)
+})
 
 const requireApiKey: MiddlewareHandler = async (c, next) => {
   const key = c.req.header('X-API-Key')
@@ -21,12 +45,14 @@ const requireApiKey: MiddlewareHandler = async (c, next) => {
   await next()
 }
 
+const sendLimiter = rateLimiter({ windowMs: 60_000, limit: 20 })
+
 app.get('/health', (c) =>
   c.json({ ok: true, service: 'email-service', ts: new Date().toISOString() })
 )
 
-app.post('/send', requireApiKey, async (c) => {
-  let body: any
+app.post('/send', sendLimiter, requireApiKey, async (c) => {
+  let body: SendRequest
   try {
     body = await c.req.json()
   } catch {
